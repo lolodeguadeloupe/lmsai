@@ -1,0 +1,736 @@
+openapi: 3.0.3
+info:
+  title: Course Generation Platform API
+  description: AI-powered course creation and management platform
+  version: 1.0.0
+  contact:
+    name: Course Platform Team
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+  - url: https://api.courseplatform.com/v1
+    description: Production server
+
+paths:
+  /courses:
+    post:
+      summary: Create a new course
+      operationId: createCourse
+      tags: [Courses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseCreationRequest'
+      responses:
+        '201':
+          description: Course creation initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseCreationResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List courses
+      operationId: listCourses
+      tags: [Courses]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CourseStatus'
+        - name: subject_domain
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of courses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+
+  /courses/{courseId}:
+    get:
+      summary: Get course details
+      operationId: getCourse
+      tags: [Courses]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Course details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update course
+      operationId: updateCourse
+      tags: [Courses]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseUpdateRequest'
+      responses:
+        '200':
+          description: Course updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+
+    delete:
+      summary: Delete course
+      operationId: deleteCourse
+      tags: [Courses]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Course deleted
+        '404':
+          description: Course not found
+
+  /courses/{courseId}/generation-status:
+    get:
+      summary: Get course generation status
+      operationId: getGenerationStatus
+      tags: [Generation]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Generation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationStatus'
+
+  /courses/{courseId}/regenerate-chapter:
+    post:
+      summary: Regenerate specific chapter
+      operationId: regenerateChapter
+      tags: [Generation]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateChapterRequest'
+      responses:
+        '202':
+          description: Regeneration initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationTaskResponse'
+
+  /courses/{courseId}/export:
+    post:
+      summary: Export course in specified format
+      operationId: exportCourse
+      tags: [Export]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        '200':
+          description: Export ready for download
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResponse'
+
+  /courses/{courseId}/quality-metrics:
+    get:
+      summary: Get course quality metrics
+      operationId: getQualityMetrics
+      tags: [Quality]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Quality metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityMetrics'
+
+  /chapters/{chapterId}:
+    get:
+      summary: Get chapter details
+      operationId: getChapter
+      tags: [Chapters]
+      parameters:
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chapter details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chapter'
+
+  /quizzes/{quizId}:
+    get:
+      summary: Get quiz details
+      operationId: getQuiz
+      tags: [Assessments]
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Quiz details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+
+components:
+  schemas:
+    CourseCreationRequest:
+      type: object
+      required:
+        - title
+        - subject_domain
+        - target_audience
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+          example: "Introduction to Machine Learning"
+        description:
+          type: string
+          maxLength: 1000
+          example: "Comprehensive course covering ML fundamentals"
+        subject_domain:
+          type: string
+          example: "Computer Science"
+        target_audience:
+          $ref: '#/components/schemas/TargetAudience'
+        estimated_duration:
+          type: string
+          format: duration
+          example: "PT20H"
+        content_preferences:
+          type: object
+          properties:
+            include_practical_examples:
+              type: boolean
+              default: true
+            theory_to_practice_ratio:
+              type: number
+              minimum: 0.1
+              maximum: 0.9
+              default: 0.6
+
+    CourseCreationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/CourseStatus'
+        generation_task_id:
+          type: string
+          format: uuid
+        estimated_completion_time:
+          type: string
+          format: date-time
+
+    Course:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        subject_domain:
+          type: string
+        target_audience:
+          $ref: '#/components/schemas/TargetAudience'
+        learning_objectives:
+          type: array
+          items:
+            type: string
+        estimated_duration:
+          type: string
+          format: duration
+        difficulty_score:
+          type: number
+          minimum: 1.0
+          maximum: 5.0
+        language:
+          type: string
+          pattern: '^[a-z]{2}$'
+        version:
+          type: string
+          pattern: '^\d+\.\d+\.\d+$'
+        status:
+          $ref: '#/components/schemas/CourseStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chapter'
+        final_assessment:
+          $ref: '#/components/schemas/Quiz'
+        quality_metrics:
+          $ref: '#/components/schemas/QualityMetrics'
+
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        course_id:
+          type: string
+          format: uuid
+        sequence_number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        learning_objectives:
+          type: array
+          items:
+            type: string
+        estimated_duration:
+          type: string
+          format: duration
+        complexity_level:
+          type: number
+          minimum: 1.0
+          maximum: 5.0
+        prerequisites:
+          type: array
+          items:
+            type: string
+        content_outline:
+          type: string
+        subchapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subchapter'
+        chapter_quiz:
+          $ref: '#/components/schemas/Quiz'
+
+    Subchapter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chapter_id:
+          type: string
+          format: uuid
+        sequence_number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        content_type:
+          $ref: '#/components/schemas/ContentType'
+        content_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentBlock'
+        key_concepts:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+
+    ContentBlock:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/BlockType'
+        content:
+          type: string
+        metadata:
+          type: object
+        order:
+          type: integer
+
+    Quiz:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuizType'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        passing_score:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        time_limit:
+          type: string
+          format: duration
+        attempts_allowed:
+          type: integer
+          minimum: 1
+        randomize_questions:
+          type: boolean
+        randomize_answers:
+          type: boolean
+
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        quiz_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/QuestionType'
+        question_text:
+          type: string
+        difficulty_level:
+          $ref: '#/components/schemas/DifficultyLevel'
+        cognitive_level:
+          $ref: '#/components/schemas/CognitiveLevel'
+        correct_answers:
+          type: array
+          items:
+            type: string
+        incorrect_answers:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: string
+        hints:
+          type: array
+          items:
+            type: string
+        points:
+          type: integer
+          minimum: 1
+
+    TargetAudience:
+      type: object
+      properties:
+        proficiency_level:
+          $ref: '#/components/schemas/ProficiencyLevel'
+        prerequisites:
+          type: array
+          items:
+            type: string
+        age_range:
+          $ref: '#/components/schemas/AgeRange'
+        professional_context:
+          type: string
+        learning_preferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningPreference'
+
+    QualityMetrics:
+      type: object
+      properties:
+        readability_score:
+          type: number
+          minimum: 0.0
+          maximum: 100.0
+        pedagogical_alignment:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        objective_coverage:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        content_accuracy:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        bias_detection_score:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        user_satisfaction_score:
+          type: number
+          minimum: 0.0
+          maximum: 5.0
+        generation_timestamp:
+          type: string
+          format: date-time
+
+    GenerationStatus:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        progress_percentage:
+          type: number
+          minimum: 0.0
+          maximum: 100.0
+        current_phase:
+          type: string
+          enum: [structure, content, assessment, validation, export]
+        estimated_time_remaining:
+          type: string
+          format: duration
+        error_message:
+          type: string
+
+    # Enums
+    CourseStatus:
+      type: string
+      enum: [draft, generating, ready, published, archived]
+
+    ContentType:
+      type: string
+      enum: [theory, practical, mixed]
+
+    BlockType:
+      type: string
+      enum: [text, image, video, code, diagram]
+
+    QuizType:
+      type: string
+      enum: [chapter, final, practice]
+
+    QuestionType:
+      type: string
+      enum: [multiple_choice, true_false, fill_blank, short_answer, practical]
+
+    ProficiencyLevel:
+      type: string
+      enum: [beginner, intermediate, advanced, expert]
+
+    CognitiveLevel:
+      type: string
+      enum: [remember, understand, apply, analyze, evaluate, create]
+
+    DifficultyLevel:
+      type: string
+      enum: [easy, medium, hard]
+
+    LearningPreference:
+      type: string
+      enum: [visual, auditory, kinesthetic]
+
+    AgeRange:
+      type: object
+      properties:
+        min_age:
+          type: integer
+          minimum: 5
+        max_age:
+          type: integer
+          maximum: 100
+
+    ExportRequest:
+      type: object
+      required:
+        - format
+      properties:
+        format:
+          type: string
+          enum: [scorm2004, xapi, qti21, pdf, html]
+        include_assessments:
+          type: boolean
+          default: true
+        include_multimedia:
+          type: boolean
+          default: true
+
+    ExportResponse:
+      type: object
+      properties:
+        download_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+        file_size:
+          type: integer
+        checksum:
+          type: string
+
+    RegenerateChapterRequest:
+      type: object
+      required:
+        - chapter_id
+      properties:
+        chapter_id:
+          type: string
+          format: uuid
+        regeneration_reason:
+          type: string
+          maxLength: 500
+
+    GenerationTaskResponse:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        estimated_completion_time:
+          type: string
+          format: date-time
+
+    CourseUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 1000
+        learning_objectives:
+          type: array
+          items:
+            type: string
+
+    CourseListResponse:
+      type: object
+      properties:
+        courses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Course'
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - ApiKeyAuth: []

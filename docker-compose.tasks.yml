@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  # Redis - Message broker and result backend
+  redis:
+    image: redis:7.2-alpine
+    container_name: course-platform-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - course-platform
+
+  # Celery Worker - Course Generation Queue
+  celery-worker-course:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: course-platform-worker-course
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_WORKER_CONCURRENCY=4
+      - CELERY_MAX_TASKS_PER_CHILD=1000
+    command: python -m src.tasks.worker worker --queues=course_generation --concurrency=4 --loglevel=INFO
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - course-platform
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+  # Celery Worker - Chapter Generation Queue
+  celery-worker-chapter:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: course-platform-worker-chapter
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_WORKER_CONCURRENCY=6
+      - CELERY_MAX_TASKS_PER_CHILD=1000
+    command: python -m src.tasks.worker worker --queues=chapter_generation --concurrency=6 --loglevel=INFO
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - course-platform
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.5'
+
+  # Celery Worker - Quality & Export Queues
+  celery-worker-misc:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: course-platform-worker-misc
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_WORKER_CONCURRENCY=4
+      - CELERY_MAX_TASKS_PER_CHILD=1000
+    command: python -m src.tasks.worker worker --queues=quality_validation,export,default --concurrency=4 --loglevel=INFO
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - course-platform
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # Celery Beat - Periodic Task Scheduler
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: course-platform-beat
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+    command: python -m src.tasks.worker beat --loglevel=INFO
+    volumes:
+      - ./backend:/app
+      - celery_beat_data:/tmp
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - course-platform
+
+  # Flower - Celery Monitoring Dashboard
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: course-platform-flower
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+    command: python -m src.tasks.worker flower --port=5555
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - course-platform
+
+  # Redis Commander - Redis Management UI (Optional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: course-platform-redis-ui
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - course-platform
+    profiles:
+      - debug
+
+volumes:
+  redis_data:
+    driver: local
+  celery_beat_data:
+    driver: local
+
+networks:
+  course-platform:
+    driver: bridge
