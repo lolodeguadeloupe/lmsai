@@ -13,7 +13,8 @@ from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, Strin
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from .base import Base
-from .enums import BlockType, ContentType
+from .enums import ContentType
+from .value_objects import ContentBlock, Example, Resource
 
 
 class ChapterTable(Base):
@@ -43,68 +44,16 @@ class ChapterTable(Base):
     # chapter_quiz = relationship("QuizTable", back_populates="chapter")
 
 
-class SubchapterTable(Base):
-    """SQLAlchemy model for Subchapter entity."""
-
-    __tablename__ = "subchapters"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    chapter_id = Column(
-        PGUUID(as_uuid=True), ForeignKey("chapters.id"), nullable=False, index=True
-    )
-    sequence_number = Column(Integer, nullable=False)
-    title = Column(String(200), nullable=False)
-    content_type = Column(String(20), nullable=False)  # ContentType enum
-    content_blocks = Column(JSON, nullable=False)  # List[ContentBlock]
-    key_concepts = Column(JSON, nullable=False)  # List[str]
-    summary = Column(Text, nullable=True)
-    additional_resources = Column(JSON, nullable=True)  # List[Resource]
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    # Relationships
-    # chapter = relationship("ChapterTable", back_populates="subchapters")
+# Subchapter entity moved to subchapter.py
 
 
-class ContentBlock(BaseModel):
-    """Value object for content blocks within subchapters."""
-
-    type: BlockType
-    content: str = Field(..., min_length=1)
-    metadata: dict = Field(default_factory=dict)
-    order: int = Field(..., ge=1)
-
-    @validator("content")
-    def validate_content_by_type(cls, v, values):
-        """Validate content based on block type."""
-        if "type" in values:
-            block_type = values["type"]
-            if block_type == BlockType.TEXT and len(v.strip()) < 10:
-                raise ValueError("Text blocks must have at least 10 characters")
-            elif block_type == BlockType.CODE and not v.strip():
-                raise ValueError("Code blocks cannot be empty")
-        return v
+# ContentBlock moved to value_objects.py
 
 
-class Resource(BaseModel):
-    """Value object for additional learning resources."""
-
-    title: str = Field(..., min_length=1, max_length=200)
-    url: str = Field(..., pattern=r"^https?://.+")
-    type: str = Field(..., description="Type of resource (article, video, book, etc.)")
-    description: Optional[str] = Field(None, max_length=500)
+# Resource moved to value_objects.py
 
 
-class Example(BaseModel):
-    """Value object for practical examples."""
-
-    title: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., min_length=10)
-    code_snippet: Optional[str] = None
-    expected_output: Optional[str] = None
-    difficulty: str = Field("medium", pattern=r"^(easy|medium|hard)$")
+# Example moved to value_objects.py
 
 
 class ChapterBase(BaseModel):
@@ -133,26 +82,7 @@ class ChapterBase(BaseModel):
         return v
 
 
-class SubchapterBase(BaseModel):
-    """Base schema for Subchapter operations."""
-
-    title: str = Field(..., min_length=3, max_length=200)
-    content_type: ContentType
-    content_blocks: List[ContentBlock] = Field(..., min_items=1)
-    key_concepts: List[str] = Field(..., min_items=1)
-    summary: Optional[str] = Field(None, max_length=1000)
-    additional_resources: List[Resource] = Field(default_factory=list)
-
-    @validator("content_blocks")
-    def validate_content_blocks_order(cls, v):
-        """Ensure content blocks have sequential order starting from 1."""
-        orders = [block.order for block in v]
-        expected_orders = list(range(1, len(v) + 1))
-        if sorted(orders) != expected_orders:
-            raise ValueError(
-                "Content blocks must have sequential order starting from 1"
-            )
-        return v
+# Subchapter schemas moved to subchapter.py
 
 
 class ChapterCreate(ChapterBase):
@@ -162,11 +92,7 @@ class ChapterCreate(ChapterBase):
     sequence_number: int = Field(..., ge=1)
 
 
-class SubchapterCreate(SubchapterBase):
-    """Schema for creating a new subchapter."""
-
-    chapter_id: UUID
-    sequence_number: int = Field(..., ge=1)
+# SubchapterCreate moved to subchapter.py
 
 
 class ChapterUpdate(BaseModel):
@@ -177,17 +103,7 @@ class ChapterUpdate(BaseModel):
     content_outline: Optional[str] = Field(None, max_length=2000)
 
 
-class Subchapter(SubchapterBase):
-    """Complete Subchapter model with all fields."""
-
-    id: UUID
-    chapter_id: UUID
-    sequence_number: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+# Subchapter moved to subchapter.py
 
 
 class Chapter(ChapterBase):

@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-from .courses import router as courses_router
-from .generation import router as generation_router
-from .export import router as export_router
-from .quality import router as quality_router
-from .chapters import router as chapters_router
-from .quizzes import router as quizzes_router
+from api.v1.courses import router as courses_router
+from api.v1.generation import router as generation_router
+from api.v1.export import router as export_router
+from api.v1.quality import router as quality_router
+from api.v1.chapters import router as chapters_router
+from api.v1.quizzes import router as quizzes_router
+from api.v1.security import router as security_router
 
 # Create the main API v1 router
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -16,6 +17,7 @@ api_v1_router.include_router(export_router)
 api_v1_router.include_router(quality_router)
 api_v1_router.include_router(chapters_router)
 api_v1_router.include_router(quizzes_router)
+api_v1_router.include_router(security_router)
 
 # Health check endpoint
 @api_v1_router.get("/health")
@@ -45,7 +47,8 @@ async def api_info():
             "export": "Course export in various formats",
             "quality": "Quality metrics and analysis",
             "chapters": "Chapter content access",
-            "quizzes": "Quiz content and attempt handling"
+            "quizzes": "Quiz content and attempt handling",
+            "security": "Security configuration and validation"
         },
         "documentation": "/docs"
     }

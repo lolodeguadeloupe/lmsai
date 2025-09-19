@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 import logging
 
-from ...database.session import get_db
-from ...services.quality_validation_service import QualityValidationService
-from ...models.course import Course
-from ...models.enums import CourseStatus, QualityScore
+from database.session import get_db
+from services.quality_validation_service import QualityValidationService
+from models.course import Course
+from models.enums import CourseStatus, QualityScore
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/courses", tags=["quality"])

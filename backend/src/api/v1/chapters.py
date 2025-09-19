@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 import logging
 
-from ...database.session import get_db
-from ...models.chapter import Chapter
-from ...models.course import Course
-from ...models.enums import GenerationStatus
+from database.session import get_db
+from models.chapter import Chapter
+from models.course import Course
+from models.enums import GenerationStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chapters", tags=["chapters"])

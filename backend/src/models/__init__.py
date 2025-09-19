@@ -11,13 +11,6 @@ from .chapter import (
     ChapterCreate,
     ChapterTable,
     ChapterUpdate,
-    ContentBlock,
-    Example,
-    Resource,
-    Subchapter,
-    SubchapterBase,
-    SubchapterCreate,
-    SubchapterTable,
 )
 from .course import (
     Course,
@@ -26,8 +19,6 @@ from .course import (
     CourseListResponse,
     CourseTable,
     CourseUpdate,
-    QualityMetrics,
-    TargetAudience,
 )
 from .enums import (
     BlockType,
@@ -40,21 +31,58 @@ from .enums import (
     QuestionType,
     QuizType,
 )
-from .quiz import (
+from .flashcard import (
     Flashcard,
     FlashcardBase,
     FlashcardCreate,
+    FlashcardListResponse,
+    FlashcardReview,
+    FlashcardSession,
     FlashcardTable,
+    FlashcardUpdate,
+)
+from .question import (
     Question,
+    QuestionAnalytics,
     QuestionBase,
     QuestionCreate,
+    QuestionListResponse,
     QuestionTable,
+    QuestionUpdate,
+)
+from .quiz import (
     Quiz,
+    QuizAnalytics,
+    QuizAttempt,
     QuizBase,
     QuizCreate,
+    QuizListResponse,
     QuizTable,
-    SpacedRepetitionData,
+    QuizUpdate,
 )
+from .subchapter import (
+    Subchapter,
+    SubchapterBase,
+    SubchapterCreate,
+    SubchapterListResponse,
+    SubchapterTable,
+    SubchapterUpdate,
+)
+from .value_objects import (
+    ContentBlock,
+    Example,
+    QualityMetrics,
+    Resource,
+    SpacedRepetitionData,
+    TargetAudience,
+)
+
+# Import API key models from auth module
+try:
+    from ..auth.api_key_auth import APIKeyTable, APIKeyUsageLog
+    _auth_models_available = True
+except ImportError:
+    _auth_models_available = False
 
 __all__ = [
     # Base
@@ -100,6 +128,10 @@ __all__ = [
     # Update Schemas
     "CourseUpdate",
     "ChapterUpdate",
+    "SubchapterUpdate",
+    "QuizUpdate",
+    "QuestionUpdate",
+    "FlashcardUpdate",
     # Complete Models
     "Course",
     "Chapter",
@@ -109,4 +141,18 @@ __all__ = [
     "Flashcard",
     # Response Schemas
     "CourseListResponse",
+    "SubchapterListResponse",
+    "QuizListResponse",
+    "QuestionListResponse",
+    "FlashcardListResponse",
+    # Analytics and Tracking
+    "QuizAttempt",
+    "QuizAnalytics",
+    "QuestionAnalytics",
+    "FlashcardReview",
+    "FlashcardSession",
 ]
+
+# Add auth models to exports if available
+if _auth_models_available:
+    __all__.extend(["APIKeyTable", "APIKeyUsageLog"])

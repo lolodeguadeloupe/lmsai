@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 import logging
 
-from ...database.session import get_db
-from ...models.quiz import Quiz
-from ...models.chapter import Chapter
-from ...models.enums import QuizType, DifficultyLevel, GenerationStatus
+from database.session import get_db
+from models.quiz import Quiz
+from models.chapter import Chapter
+from models.enums import QuizType, DifficultyLevel, GenerationStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])

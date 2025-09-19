@@ -15,7 +15,8 @@ from sqlalchemy import Float, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from .base import Base
-from .enums import CourseStatus, LearningPreference, ProficiencyLevel
+from .enums import CourseStatus
+from .value_objects import QualityMetrics, TargetAudience
 
 
 class CourseTable(Base):
@@ -47,38 +48,10 @@ class CourseTable(Base):
     # final_assessment = relationship("QuizTable", back_populates="course")
 
 
-class TargetAudience(BaseModel):
-    """Value object for target audience specification."""
-
-    proficiency_level: ProficiencyLevel
-    prerequisites: List[str] = Field(default_factory=list)
-    age_range: Optional[dict] = None  # {"min_age": int, "max_age": int}
-    professional_context: Optional[str] = None
-    learning_preferences: List[LearningPreference] = Field(default_factory=list)
-
-    @validator("age_range")
-    def validate_age_range(cls, v):
-        if v is not None:
-            if not isinstance(v, dict):
-                raise ValueError("age_range must be a dictionary")
-            if "min_age" in v and "max_age" in v:
-                if v["min_age"] > v["max_age"]:
-                    raise ValueError("min_age cannot be greater than max_age")
-                if v["min_age"] < 5 or v["max_age"] > 100:
-                    raise ValueError("Age range must be between 5 and 100")
-        return v
+# TargetAudience moved to value_objects.py
 
 
-class QualityMetrics(BaseModel):
-    """Value object for course quality metrics."""
-
-    readability_score: float = Field(ge=0.0, le=100.0)
-    pedagogical_alignment: float = Field(ge=0.0, le=1.0)
-    objective_coverage: float = Field(ge=0.0, le=1.0)
-    content_accuracy: float = Field(ge=0.0, le=1.0)
-    bias_detection_score: float = Field(ge=0.0, le=1.0)
-    user_satisfaction_score: Optional[float] = Field(None, ge=0.0, le=5.0)
-    generation_timestamp: datetime
+# QualityMetrics moved to value_objects.py
 
 
 class CourseBase(BaseModel):
@@ -143,6 +116,8 @@ class Course(CourseBase):
     @validator("difficulty_score")
     def validate_difficulty_with_audience(cls, v, values):
         """Ensure difficulty aligns with target audience proficiency level."""
+        from .enums import ProficiencyLevel
+        
         if "target_audience" in values:
             audience = values["target_audience"]
             proficiency = audience.proficiency_level

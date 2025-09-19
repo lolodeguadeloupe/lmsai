@@ -1,7 +1,8 @@
 """
-Quiz and Question models implementation with SQLAlchemy and Pydantic.
+Quiz model implementation with SQLAlchemy and Pydantic.
 
-Based on data-model.md specifications for Quiz and Question entities.
+Based on data-model.md specifications for Quiz entity.
+Note: Question and Flashcard entities moved to separate files.
 """
 
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from .base import Base
-from .enums import CognitiveLevel, DifficultyLevel, QuestionType, QuizType
+from .enums import CognitiveLevel, QuizType
 
 
 class QuizTable(Base):
@@ -58,67 +59,6 @@ class QuizTable(Base):
     # chapter = relationship("ChapterTable", back_populates="chapter_quiz")
 
 
-class QuestionTable(Base):
-    """SQLAlchemy model for Question entity."""
-
-    __tablename__ = "questions"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    quiz_id = Column(
-        PGUUID(as_uuid=True), ForeignKey("quizzes.id"), nullable=False, index=True
-    )
-    type = Column(String(20), nullable=False)  # QuestionType enum
-    question_text = Column(Text, nullable=False)
-    difficulty_level = Column(String(10), nullable=False)  # DifficultyLevel enum
-    cognitive_level = Column(String(15), nullable=False)  # CognitiveLevel enum
-    correct_answers = Column(JSON, nullable=False)  # List[str]
-    incorrect_answers = Column(JSON, nullable=True)  # List[str] for multiple choice
-    explanation = Column(Text, nullable=True)
-    hints = Column(JSON, nullable=True)  # List[str]
-    points = Column(Integer, nullable=False, default=1)
-    sequence_number = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    # Relationships
-    # quiz = relationship("QuizTable", back_populates="questions")
-
-
-class FlashcardTable(Base):
-    """SQLAlchemy model for Flashcard entity."""
-
-    __tablename__ = "flashcards"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    course_id = Column(
-        PGUUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
-    )
-    front_content = Column(Text, nullable=False)
-    back_content = Column(Text, nullable=False)
-    difficulty_rating = Column(Float, nullable=False, default=3.0)  # 1.0-5.0
-    importance_rating = Column(Float, nullable=False, default=3.0)  # 1.0-5.0
-    spaced_repetition_metadata = Column(JSON, nullable=True)
-    related_concepts = Column(JSON, nullable=False)  # List[str]
-    tags = Column(JSON, nullable=False)  # List[str]
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-
-class SpacedRepetitionData(BaseModel):
-    """Value object for spaced repetition algorithm data."""
-
-    ease_factor: float = Field(2.5, ge=1.3, le=5.0)
-    interval: int = Field(1, ge=1)  # Days
-    repetitions: int = Field(0, ge=0)
-    last_reviewed: Optional[datetime] = None
-    next_review: Optional[datetime] = None
-    quality_responses: List[int] = Field(default_factory=list)  # 0-5 scale
-
-
 class QuizBase(BaseModel):
     """Base schema for Quiz operations."""
 
@@ -138,65 +78,14 @@ class QuizBase(BaseModel):
             raise ValueError("Time limit must be in ISO 8601 format (e.g., PT30M)")
         return v
 
-
-class QuestionBase(BaseModel):
-    """Base schema for Question operations."""
-
-    type: QuestionType
-    question_text: str = Field(..., min_length=10)
-    difficulty_level: DifficultyLevel
-    cognitive_level: CognitiveLevel
-    correct_answers: List[str] = Field(..., min_items=1)
-    incorrect_answers: Optional[List[str]] = Field(None)
-    explanation: Optional[str] = Field(None, max_length=1000)
-    hints: Optional[List[str]] = Field(None, max_items=3)
-    points: int = Field(1, ge=1, le=10)
-
-    @validator("incorrect_answers")
-    def validate_incorrect_answers_for_multiple_choice(cls, v, values):
-        """Ensure multiple choice questions have incorrect answers."""
-        if "type" in values and values["type"] == QuestionType.MULTIPLE_CHOICE:
-            if not v or len(v) < 2:
-                raise ValueError(
-                    "Multiple choice questions need at least 2 incorrect answers"
-                )
-            if len(v) > 4:
-                raise ValueError(
-                    "Multiple choice questions should have at most 4 incorrect answers"
-                )
+    @validator("passing_score")
+    def validate_passing_score_range(cls, v):
+        """Validate passing score follows assessment best practices."""
+        if v < 0.6:
+            raise ValueError("Passing score should be at least 60% for effective assessment")
+        if v > 0.85:
+            raise ValueError("Passing score above 85% may be too restrictive")
         return v
-
-    @validator("correct_answers")
-    def validate_correct_answers_by_type(cls, v, values):
-        """Validate correct answers based on question type."""
-        if "type" in values:
-            question_type = values["type"]
-            if question_type == QuestionType.TRUE_FALSE and len(v) != 1:
-                raise ValueError(
-                    "True/False questions must have exactly one correct answer"
-                )
-            elif question_type == QuestionType.TRUE_FALSE and v[0].lower() not in [
-                "true",
-                "false",
-            ]:
-                raise ValueError("True/False answers must be 'true' or 'false'")
-            elif question_type == QuestionType.MULTIPLE_CHOICE and len(v) != 1:
-                raise ValueError(
-                    "Multiple choice questions must have exactly one correct answer"
-                )
-        return v
-
-
-class FlashcardBase(BaseModel):
-    """Base schema for Flashcard operations."""
-
-    front_content: str = Field(..., min_length=5, max_length=500)
-    back_content: str = Field(..., min_length=5, max_length=1000)
-    difficulty_rating: float = Field(3.0, ge=1.0, le=5.0)
-    importance_rating: float = Field(3.0, ge=1.0, le=5.0)
-    related_concepts: List[str] = Field(..., min_items=1)
-    tags: List[str] = Field(..., min_items=1)
-    spaced_repetition_metadata: Optional[SpacedRepetitionData] = None
 
 
 class QuizCreate(QuizBase):
@@ -218,30 +107,15 @@ class QuizCreate(QuizBase):
         return v
 
 
-class QuestionCreate(QuestionBase):
-    """Schema for creating a new question."""
+class QuizUpdate(BaseModel):
+    """Schema for updating an existing quiz."""
 
-    quiz_id: UUID
-    sequence_number: int = Field(..., ge=1)
-
-
-class FlashcardCreate(FlashcardBase):
-    """Schema for creating a new flashcard."""
-
-    course_id: UUID
-
-
-class Question(QuestionBase):
-    """Complete Question model with all fields."""
-
-    id: UUID
-    quiz_id: UUID
-    sequence_number: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    title: Optional[str] = Field(None, min_length=3, max_length=200)
+    passing_score: Optional[float] = Field(None, ge=0.6, le=0.85)
+    time_limit: Optional[str] = Field(None, description="ISO 8601 duration format")
+    attempts_allowed: Optional[int] = Field(None, ge=1, le=10)
+    randomize_questions: Optional[bool] = None
+    randomize_answers: Optional[bool] = None
 
 
 class Quiz(QuizBase):
@@ -252,50 +126,107 @@ class Quiz(QuizBase):
     chapter_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
-    questions: List[Question] = Field(default_factory=list)
+    # Note: questions relationship handled through question.py imports
 
     class Config:
         from_attributes = True
 
-    @validator("questions")
-    def validate_question_distribution(cls, v):
-        """Validate cognitive level distribution based on audience level."""
-        if not v:
-            return v
+    @property
+    def parent_type(self) -> str:
+        """Get the type of parent entity (course or chapter)."""
+        if self.course_id:
+            return "course"
+        elif self.chapter_id:
+            return "chapter"
+        return "unknown"
 
-        # Count questions by cognitive level
-        cognitive_counts = {}
-        for question in v:
-            level = question.cognitive_level
-            cognitive_counts[level] = cognitive_counts.get(level, 0) + 1
+    @property
+    def parent_id(self) -> Optional[UUID]:
+        """Get the parent entity ID."""
+        return self.course_id or self.chapter_id
 
-        total_questions = len(v)
 
-        # Basic validation for cognitive distribution
-        if total_questions >= 5:
-            remember_pct = (
-                cognitive_counts.get(CognitiveLevel.REMEMBER, 0) / total_questions
-            )
-            understand_pct = (
-                cognitive_counts.get(CognitiveLevel.UNDERSTAND, 0) / total_questions
-            )
+class QuizListResponse(BaseModel):
+    """Schema for quiz list responses."""
 
-            # Ensure some balance (can be refined based on target audience)
-            if remember_pct > 0.7:  # Max 70% memory questions
-                raise ValueError("Too many memory-based questions")
-            if understand_pct < 0.2 and total_questions >= 10:  # Min 20% understanding
-                raise ValueError("Need more understanding-level questions")
+    quizzes: List[Quiz]
+    total_count: int
+    parent_id: Optional[UUID] = None
+    parent_type: Optional[str] = None
 
+
+class QuizAttempt(BaseModel):
+    """Schema for quiz attempt tracking."""
+
+    attempt_id: UUID = Field(default_factory=uuid4)
+    quiz_id: UUID
+    user_id: Optional[UUID] = None  # For future user system integration
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+    score: Optional[float] = Field(None, ge=0.0, le=1.0)
+    passed: Optional[bool] = None
+    time_taken_seconds: Optional[int] = Field(None, ge=0)
+    attempt_number: int = Field(..., ge=1)
+
+    @validator("completed_at")
+    def validate_completion_time(cls, v, values):
+        """Ensure completion time is after start time."""
+        if v is not None and "started_at" in values:
+            if v <= values["started_at"]:
+                raise ValueError("Completion time must be after start time")
         return v
 
+    @validator("passed")
+    def validate_passed_status(cls, v, values):
+        """Determine passed status based on score if not explicitly set."""
+        if v is None and "score" in values and values["score"] is not None:
+            # This would need the quiz's passing_score to determine
+            # For now, we'll allow explicit setting
+            pass
+        return v
 
-class Flashcard(FlashcardBase):
-    """Complete Flashcard model with all fields."""
+    @property
+    def is_completed(self) -> bool:
+        """Check if attempt is completed."""
+        return self.completed_at is not None
 
-    id: UUID
-    course_id: UUID
-    created_at: datetime
-    updated_at: datetime
+    @property
+    def duration_minutes(self) -> Optional[float]:
+        """Calculate attempt duration in minutes."""
+        if self.time_taken_seconds is not None:
+            return round(self.time_taken_seconds / 60, 1)
+        return None
 
-    class Config:
-        from_attributes = True
+
+class QuizAnalytics(BaseModel):
+    """Schema for quiz performance analytics."""
+
+    quiz_id: UUID
+    total_attempts: int = 0
+    completed_attempts: int = 0
+    average_score: Optional[float] = Field(None, ge=0.0, le=1.0)
+    pass_rate: Optional[float] = Field(None, ge=0.0, le=1.0)
+    average_completion_time_minutes: Optional[float] = None
+    difficulty_rating: Optional[float] = Field(None, ge=1.0, le=5.0)
+    last_analyzed: datetime = Field(default_factory=datetime.utcnow)
+
+    @property
+    def completion_rate(self) -> Optional[float]:
+        """Calculate completion rate percentage."""
+        if self.total_attempts == 0:
+            return None
+        return round((self.completed_attempts / self.total_attempts) * 100, 1)
+
+    @validator("pass_rate", "average_score")
+    def validate_rates(cls, v):
+        """Ensure rates are within valid ranges."""
+        if v is not None and (v < 0.0 or v > 1.0):
+            raise ValueError("Rates must be between 0.0 and 1.0")
+        return v
+
+    @validator("difficulty_rating")
+    def validate_difficulty_rating(cls, v):
+        """Validate difficulty rating."""
+        if v is not None and (v < 1.0 or v > 5.0):
+            raise ValueError("Difficulty rating must be between 1.0 and 5.0")
+        return v

@@ -1,13 +1,24 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from uuid import UUID, uuid4
 import logging
 
-from ...database.session import get_db
-from ...services.course_generation_service import CourseGenerationService
-from ...models.course import Course
-from ...models.enums import CourseStatus, SubjectDomain, TargetAudience, DifficultyLevel
+from database.session import get_db
+from services.course_generation_service import CourseGenerationService
+from models.course import Course
+from models.enums import CourseStatus, SubjectDomain, TargetAudience, DifficultyLevel
+
+# Import exception handling system
+from core.exceptions import (
+    ResourceNotFoundException,
+    ResourceConflictException,
+    ValidationException,
+    InvalidStateException,
+    DatabaseException,
+    ErrorDetail
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -74,6 +85,18 @@ async def create_course(
     try:
         logger.info(f"Creating new course: {request.title}")
         
+        # Validate course doesn't already exist with same title
+        existing_course = db.query(Course).filter(Course.title == request.title).first()
+        if existing_course:
+            raise ResourceConflictException(
+                message=f"Course with title '{request.title}' already exists",
+                details=[ErrorDetail(
+                    field="title",
+                    message="Course title must be unique",
+                    code="DUPLICATE_TITLE"
+                )]
+            )
+        
         # Initialize the course generation service
         course_service = CourseGenerationService(db)
         
@@ -98,17 +121,25 @@ async def create_course(
             estimated_completion_time=course.estimated_completion_time
         )
         
+    except (ResourceConflictException, ValidationException):
+        # Re-raise platform exceptions (they'll be handled by global handler)
+        raise
     except ValueError as e:
-        logger.error(f"Validation error creating course: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Convert validation errors to platform exceptions
+        raise ValidationException(
+            message=f"Invalid course data: {str(e)}",
+            details=[ErrorDetail(
+                field="request",
+                message=str(e),
+                code="INVALID_DATA"
+            )]
         )
-    except Exception as e:
-        logger.error(f"Unexpected error creating course: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create course"
+    except SQLAlchemyError as e:
+        # Convert database errors to platform exceptions
+        raise DatabaseException(
+            message="Failed to create course due to database error",
+            operation="course_creation",
+            cause=e
         )
 
 # T042: GET /courses (list) endpoint
@@ -198,9 +229,9 @@ async def get_course(
         course = db.query(Course).filter(Course.id == course_id).first()
         
         if not course:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Course with ID {course_id} not found"
+            raise ResourceNotFoundException(
+                resource_type="Course",
+                resource_id=course_id
             )
         
         return CourseResponse(
@@ -218,13 +249,14 @@ async def get_course(
             completion_percentage=course.completion_percentage
         )
         
-    except HTTPException:
+    except ResourceNotFoundException:
+        # Re-raise platform exceptions (they'll be handled by global handler)
         raise
-    except Exception as e:
-        logger.error(f"Error fetching course {course_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch course details"
+    except SQLAlchemyError as e:
+        raise DatabaseException(
+            message="Failed to fetch course details due to database error",
+            operation="course_retrieval",
+            cause=e
         )
 
 # T044: PUT /courses/{courseId} endpoint
@@ -251,16 +283,20 @@ async def update_course(
         course = db.query(Course).filter(Course.id == course_id).first()
         
         if not course:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Course with ID {course_id} not found"
+            raise ResourceNotFoundException(
+                resource_type="Course", 
+                resource_id=course_id
             )
         
         # Check if course can be updated (not in certain states)
-        if course.status in [CourseStatus.GENERATING, CourseStatus.PROCESSING]:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot update course while generation is in progress"
+        updatable_states = [CourseStatus.DRAFT, CourseStatus.READY, CourseStatus.PUBLISHED]
+        if course.status not in updatable_states:
+            raise InvalidStateException(
+                entity_type="Course",
+                entity_id=course_id,
+                current_state=course.status.value,
+                required_states=[state.value for state in updatable_states],
+                operation="update"
             )
         
         # Update fields
@@ -290,14 +326,15 @@ async def update_course(
             completion_percentage=course.completion_percentage
         )
         
-    except HTTPException:
+    except (ResourceNotFoundException, InvalidStateException):
+        # Re-raise platform exceptions (they'll be handled by global handler)
         raise
-    except Exception as e:
-        logger.error(f"Error updating course {course_id}: {str(e)}")
+    except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update course"
+        raise DatabaseException(
+            message="Failed to update course due to database error",
+            operation="course_update",
+            cause=e
         )
 
 # T045: DELETE /courses/{courseId} endpoint
