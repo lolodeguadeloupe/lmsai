@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Database CLI shortcut script
+# Usage: ./db <command> [options]
+#
+# Examples:
+#   ./db test-connection
+#   ./db status
+#   ./db init-schema --force
+#   ./db seed-test-data
+#
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Activate virtual environment if it exists
+if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/.venv/bin/activate"
+fi
+
+# Run the database CLI command
+python "$SCRIPT_DIR/cli.py" db "$@"

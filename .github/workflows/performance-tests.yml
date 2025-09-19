@@ -1,0 +1,301 @@
+name: Performance Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run performance tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of performance test to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - load-only
+      concurrent_limit:
+        description: 'Maximum concurrent operations for load tests'
+        required: false
+        default: '100'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  performance-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lms_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for performance comparison
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            postgresql-client \
+            libpq-dev \
+            build-essential \
+            python3-dev
+
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up environment variables
+        run: |
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/lms_test" >> $GITHUB_ENV
+          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+          echo "TESTING=true" >> $GITHUB_ENV
+          echo "LOG_LEVEL=INFO" >> $GITHUB_ENV
+          
+          # Performance test configuration
+          if [ "${{ github.event.inputs.test_type }}" = "quick" ] || [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "PERFORMANCE_QUICK_RUN=true" >> $GITHUB_ENV
+          fi
+          
+          if [ -n "${{ github.event.inputs.concurrent_limit }}" ]; then
+            echo "LOAD_TEST_CONCURRENT_LIMIT=${{ github.event.inputs.concurrent_limit }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set up database
+        run: |
+          cd backend
+          # Wait for PostgreSQL to be ready
+          until pg_isready -h localhost -p 5432; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          
+          # Run database migrations
+          python -c "
+          from src.database.session import engine
+          from src.models import Base
+          Base.metadata.create_all(bind=engine)
+          print('Database setup complete')
+          "
+
+      - name: Download baseline performance data
+        continue-on-error: true
+        run: |
+          cd backend
+          # Try to download previous performance baseline
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against main branch
+            git show main:backend/performance_baseline.json > performance_baseline.json 2>/dev/null || echo "No baseline found"
+          else
+            # For main branch, try to get from artifacts
+            echo "No baseline comparison for main branch builds"
+          fi
+
+      - name: Run performance tests
+        id: performance
+        run: |
+          cd backend
+          
+          # Determine test type
+          if [ "${{ github.event.inputs.test_type }}" = "load-only" ]; then
+            echo "Running load tests only..."
+            python -m pytest tests/performance/test_load.py -m load -v --tb=short
+          elif [ "${{ github.event.inputs.test_type }}" = "full" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Running full performance test suite..."
+            python -m tests.performance.ci_integration --ci-system github --check-regression performance_baseline.json
+          else
+            echo "Running quick performance tests..."
+            python -m tests.performance.ci_integration --ci-system github --quick
+          fi
+
+      - name: Generate performance report
+        if: always()
+        run: |
+          cd backend
+          
+          # Generate detailed performance report
+          python -c "
+          from tests.performance.monitoring import global_performance_monitor
+          from tests.performance.benchmarks import BenchmarkSuite
+          import json
+          from datetime import datetime
+          
+          # Export performance metrics
+          report_file = global_performance_monitor.export_metrics()
+          print(f'Performance metrics exported to: {report_file}')
+          
+          # Generate summary for GitHub
+          summary = global_performance_monitor.get_performance_summary(hours=1)
+          with open('performance_summary.json', 'w') as f:
+              json.dump(summary, f, indent=2)
+          "
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: performance-results-${{ github.run_number }}
+          path: |
+            backend/performance_*.json
+            backend/performance_results/
+            backend/benchmark_results/
+          retention-days: 30
+
+      - name: Update performance baseline
+        if: github.ref == 'refs/heads/main' && success()
+        run: |
+          cd backend
+          
+          # Create new baseline from successful main branch run
+          python -c "
+          from tests.performance.monitoring import global_performance_monitor
+          import json
+          
+          summary = global_performance_monitor.get_performance_summary(hours=1)
+          if summary:
+              with open('performance_baseline.json', 'w') as f:
+                  json.dump(summary, f, indent=2)
+              print('Performance baseline updated')
+          "
+          
+          # Commit baseline if it changed
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet performance_baseline.json; then
+            echo "No changes to baseline"
+          else
+            git add performance_baseline.json
+            git commit -m "Update performance baseline [skip ci]"
+            git push
+          fi
+
+      - name: Comment PR with performance results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            try {
+              // Read performance summary
+              const summary = JSON.parse(fs.readFileSync('backend/performance_summary.json', 'utf8'));
+              
+              let comment = '## 📊 Performance Test Results\n\n';
+              
+              if (summary.performance_metrics) {
+                const pm = summary.performance_metrics;
+                comment += `| Metric | Value | Threshold |\n`;
+                comment += `|--------|-------|----------|\n`;
+                comment += `| Avg Response Time | ${pm.avg_response_time?.toFixed(2) || 'N/A'}ms | <200ms |\n`;
+                comment += `| 95th Percentile | ${pm.p95_response_time?.toFixed(2) || 'N/A'}ms | <200ms |\n`;
+                comment += `| Error Rate | ${(pm.avg_error_rate * 100)?.toFixed(2) || 'N/A'}% | <5% |\n`;
+                comment += `| Total Requests | ${pm.total_requests || 'N/A'} | - |\n\n`;
+              }
+              
+              if (summary.system_resources && summary.system_resources.cpu_percent) {
+                const sr = summary.system_resources;
+                comment += `### System Resources\n`;
+                comment += `- **CPU Usage:** ${sr.cpu_percent.avg?.toFixed(1) || 'N/A'}% (max: ${sr.cpu_percent.max?.toFixed(1) || 'N/A'}%)\n`;
+                comment += `- **Memory Usage:** ${sr.memory_mb.avg?.toFixed(1) || 'N/A'}MB (max: ${sr.memory_mb.max?.toFixed(1) || 'N/A'}MB)\n\n`;
+              }
+              
+              comment += `### Test Details\n`;
+              comment += `- **Performance Tests:** ${summary.performance_tests || 0}\n`;
+              comment += `- **Load Tests:** ${summary.load_tests || 0}\n`;
+              comment += `- **Duration:** ${summary.time_period_hours || 1} hour(s)\n\n`;
+              
+              comment += `[View detailed results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.log('Could not post performance comment:', error);
+            }
+
+      - name: Performance test summary
+        if: always()
+        run: |
+          cd backend
+          echo "## Performance Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f performance_summary.json ]; then
+            echo "✅ Performance tests completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Key Metrics:**" >> $GITHUB_STEP_SUMMARY
+            python -c "
+            import json
+            with open('performance_summary.json', 'r') as f:
+                summary = json.load(f)
+            
+            if 'performance_metrics' in summary:
+                pm = summary['performance_metrics']
+                print(f'- Average Response Time: {pm.get(\"avg_response_time\", 0):.2f}ms')
+                print(f'- 95th Percentile: {pm.get(\"p95_response_time\", 0):.2f}ms')
+                print(f'- Error Rate: {pm.get(\"avg_error_rate\", 0):.2%}')
+            " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Performance tests failed or incomplete" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  notify-results:
+    needs: performance-tests
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'schedule'
+    
+    steps:
+      - name: Notify on failure
+        if: needs.performance-tests.result == 'failure'
+        run: |
+          echo "Daily performance tests failed!"
+          # Add notification logic here (Slack, email, etc.)
+          
+      - name: Notify on success
+        if: needs.performance-tests.result == 'success'
+        run: |
+          echo "Daily performance tests passed successfully!"
+          # Add success notification logic here
