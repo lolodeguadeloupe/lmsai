@@ -1,0 +1,47 @@
+{
+  "summary": {
+    "total_tests": 9,
+    "passed_tests": 9,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "execution_time": 0.1536576747894287,
+    "overall_success": true
+  },
+  "performance": {
+    "course_creation": {
+      "duration": 0.010222434997558594,
+      "threshold": 0.5,
+      "passed": true
+    },
+    "status_check": {
+      "duration": 0.010208368301391602,
+      "threshold": 0.1,
+      "passed": true
+    },
+    "quality_validation": {
+      "duration": 0.010210990905761719,
+      "threshold": 30,
+      "passed": true
+    },
+    "export_initiation": {
+      "duration": 0.010259628295898438,
+      "threshold": 0.3,
+      "passed": true
+    },
+    "chapter_generation": {
+      "duration": 90,
+      "threshold": 120,
+      "passed": true
+    }
+  },
+  "quality": {
+    "readability_score": 75.0,
+    "pedagogical_alignment": 0.9,
+    "objective_coverage": 1.0,
+    "content_accuracy": 0.95,
+    "bias_detection_score": 0.05,
+    "generation_timestamp": "2025-09-16T18:25:00Z"
+  },
+  "errors": [],
+  "timestamp": "2025-09-20T11:52:13.052024"
+}

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import exception handling system
-from core.exceptions import register_exception_handlers
+from src.core.exceptions import register_exception_handlers
 
 try:
     from tasks.utils import get_task_queue_status
@@ -18,7 +18,7 @@ except ImportError:
         return {"queue_health": "healthy", "note": "Task queue not configured"}
 
 try:
-    from api import api_v1_router
+    from src.api import api_v1_router
     print("✅ API v1 router imported successfully")
 except ImportError as e:
     print(f"⚠️ Could not import API router: {e}")

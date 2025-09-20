@@ -1,14 +1,32 @@
-# Course Platform - AI-Powered Course Creation
+# CourseGen AI - Plateforme de Génération de Cours par IA
 
-Une plateforme de création de cours utilisant l'IA pour générer automatiquement du contenu pédagogique adapté au niveau des apprenants.
+> 🚀 Une plateforme moderne de création de cours alimentée par l'intelligence artificielle, inspirée de Coursebox.ai
 
-## 🚀 Fonctionnalités
+## ✨ Fonctionnalités
 
-- **Génération automatique de cours** : Création de contenu structuré adapté au niveau cible
-- **Évaluations intelligentes** : Quiz et flashcards générés automatiquement
-- **Validation qualité** : Métriques pédagogiques et scores de lisibilité
-- **Export multi-formats** : SCORM, xAPI, QTI, PDF, HTML
-- **Performance optimisée** : <2min par chapitre, 100+ générations simultanées
+### 🤖 Génération IA Avancée
+- Création de cours complets à partir de simples descriptions
+- Génération de contenu pédagogique optimisé
+- Adaptation automatique au niveau d'audience
+- Support de multiples langues
+
+### 🎨 Interface Moderne
+- Design inspiré de Coursebox.ai
+- Interface utilisateur intuitive avec Next.js et Tailwind CSS
+- Animations fluides avec Framer Motion
+- Responsive design pour tous les appareils
+
+### 🔧 API Robuste
+- API REST complète avec FastAPI
+- Documentation automatique avec Swagger/OpenAPI
+- Validation de données avec Pydantic
+- Architecture microservices ready
+
+### 📊 Fonctionnalités Avancées
+- Dashboard analytics en temps réel
+- Système de quality metrics
+- Export multi-formats (SCORM, xAPI, PDF, HTML)
+- Gestion des utilisateurs et permissions
 
 ## 🏗️ Architecture
 
